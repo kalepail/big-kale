@@ -27,7 +27,10 @@ export function toSnapshot(farm: FarmState): Snapshot {
     unused += plot.groundKale;
     if (plot.state === "empty" || plot.state === "wilted" || plot.state === "tilled") emptyDirt++;
   }
-  for (const a of farm.agents) staff[a.job as JobKind]++;
+  for (const a of farm.agents) {
+    staff[a.job as JobKind]++;
+    unused += a.carrying || 0;
+  }
   let bottleneck: HudRates["bottleneck"] = "ok";
   if (farm.ripeCount >= 3 || (farm.ripeCount >= 1 && staff.harvester === 0)) bottleneck = "rot";
   else if (farm.groundCount >= 3) bottleneck = "haul";

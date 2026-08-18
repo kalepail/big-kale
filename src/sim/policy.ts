@@ -15,11 +15,11 @@ export function basePolicy(job: JobKind): Policy {
 export function parseJobFile(md: string): Partial<Policy> {
   const t = md.toLowerCase();
   const out: Partial<Policy> = {};
-  if (/till|plant|seed|sow/.test(t)) out.plant = true;
-  if (/tend|work|water|weed/.test(t)) out.tend = true;
-  if (/harvest|cut|ripe|wilt/.test(t)) out.harvest = true;
-  if (/haul|carry|barn|clear/.test(t)) out.haul = true;
-  if (/build|place|expand|plot/.test(t)) out.build = true;
+  if (/\b(till|plant|seed|sow)\b/.test(t)) out.plant = true;
+  if (/\b(tend|water|weed)\b|work the/.test(t)) out.tend = true;
+  if (/\b(harvest|cut)\b|ripe kale|do not wilt|doesn't wilt/.test(t)) out.harvest = true;
+  if (/\b(haul|carry|piles)\b|to the barn/.test(t)) out.haul = true;
+  if (/\b(build|expand)\b|new plots/.test(t)) out.build = true;
   if (/wait at the barn|stand at the barn/.test(t)) out.waitAtBarn = true;
   return out;
 }

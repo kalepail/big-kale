@@ -4,6 +4,8 @@ import {
   MAP_H,
   MAP_W,
   MAX_AGENTS,
+  PILES_PER_HAULER,
+  RIPE_PER_HARVESTER,
   TERRAIN,
   type JobKind,
 } from "./constants";
@@ -54,16 +56,40 @@ function act(farm: FarmState): void {
   const yieldPerMin = sumWindow(farm.yieldEvents, farm.simTime);
   const spendPerMin = farm.agents.reduce((s, a) => s + a.burn, 0);
   const netPerMin = yieldPerMin - spendPerMin;
+  const crisis = farm.ripeCount >= 1 || farm.groundCount >= 1;
+  const wantHarv = wantHarvesters(farm);
+  const wantHaul = wantHaulers(farm);
 
-  if (farm.ripeCount >= 1 && !anyone(farm, "harvest")) {
-    const note = ensureCoverage(farm, "harvester", "harvest");
-    say(farm, note.thought, note.lastAct);
-    return;
+  if (farm.ripeCount > 0 && countJob(farm, "harvester") < wantHarv) {
+    const note = staffUp(farm, "harvester", wantHarv);
+    if (note) {
+      say(farm, note.thought, note.lastAct);
+      return;
+    }
   }
 
-  if (farm.groundCount >= 1 && !anyone(farm, "haul")) {
-    const note = ensureCoverage(farm, "hauler", "haul");
-    say(farm, note.thought, note.lastAct);
+  if (farm.groundCount > 0 && countJob(farm, "hauler") < wantHaul) {
+    const note = staffUp(farm, "hauler", wantHaul);
+    if (note) {
+      say(farm, note.thought, note.lastAct);
+      return;
+    }
+    const patched = patchHaul(farm);
+    if (patched) {
+      say(farm, patched.thought, patched.lastAct);
+      return;
+    }
+  }
+
+  if (crisis) {
+    if (farm.kale > 40) {
+      const promo = tryPromoteBottleneck(farm);
+      if (promo) {
+        say(farm, promo.thought, promo.lastAct);
+        return;
+      }
+    }
+    say(farm, statusThought(farm, netPerMin), farm.foreman.lastAct || "buying the line");
     return;
   }
 
@@ -102,7 +128,7 @@ function act(farm: FarmState): void {
   if (netPerMin > 0 && farm.kale > 25 && (emptyCount < 4 || homeOccupied(farm))) {
     const tiles = findExpandTiles(farm, 4);
     if (tiles.length) {
-      for (const t of tiles) designate(farm, t.x, t.y, "build");
+      for (const tile of tiles) designate(farm, tile.x, tile.y, "build");
       let extra = `marked ${tiles.length} grass tiles. grow bigger.`;
       if (!anyone(farm, "build")) {
         const cov = ensureCoverage(farm, "builder", "build");
@@ -260,6 +286,64 @@ function tryHire(farm: FarmState, job: JobKind): { thought: string; lastAct: str
 }
 
 
+function countJob(farm: FarmState, job: JobKind): number {
+  return farm.agents.filter((a) => a.job === job).length;
+}
+
+function wantHarvesters(farm: FarmState): number {
+  if (farm.ripeCount <= 0) return countJob(farm, "harvester");
+  return Math.max(1, Math.ceil(farm.ripeCount / RIPE_PER_HARVESTER));
+}
+
+function wantHaulers(farm: FarmState): number {
+  if (farm.groundCount <= 0) return countJob(farm, "hauler");
+  const byPiles = Math.ceil(farm.groundCount / PILES_PER_HAULER);
+  const byRatio = countJob(farm, "harvester");
+  return Math.max(1, byPiles, byRatio);
+}
+
+function staffUp(farm: FarmState, job: JobKind, want: number): { thought: string; lastAct: string } | null {
+  if (countJob(farm, job) >= want) return null;
+  return tryHire(farm, job);
+}
+
+function patchHaul(farm: FarmState): { thought: string; lastAct: string } | null {
+  const harvesters = countJob(farm, "harvester");
+  const target = [...farm.agents]
+    .filter((a) => a.job !== "hauler")
+    .filter((a) => !(a.job === "harvester" && harvesters <= 1))
+    .filter((a) => !a.policy.haul)
+    .sort((a, b) => b.idleSince - a.idleSince)[0];
+  if (!target) return null;
+  patchAgent(target, PATCH.haul);
+  target.policy = { ...target.policy, haul: true };
+  return {
+    thought: `broke to hire. patched ${target.name} to haul.`,
+    lastAct: `patched ${target.name} for haul`,
+  };
+}
+
+function tryPromoteBottleneck(farm: FarmState): { thought: string; lastAct: string } | null {
+  const preferHauler = farm.groundCount > farm.ripeCount;
+  const cand = farm.agents
+    .filter((a) => (a.job === "hauler" || a.job === "harvester") && (a.rank || 1) < 3)
+    .sort((a, b) => {
+      if (a.job !== b.job) {
+        if (preferHauler) return a.job === "hauler" ? -1 : 1;
+        return a.job === "harvester" ? -1 : 1;
+      }
+      return (a.rank || 1) - (b.rank || 1);
+    });
+  const target = cand[0];
+  if (!target) return null;
+  const res = promoteAgent(farm, target.id);
+  if (!res.ok) return null;
+  return {
+    thought: `promoted ${target.name} the ${target.job}. bottleneck specialist.`,
+    lastAct: res.msg,
+  };
+}
+
 function tryPromoteSpecialist(farm: FarmState): { thought: string; lastAct: string } | null {
   const cand = farm.agents
     .filter(
@@ -280,9 +364,11 @@ function tryPromoteSpecialist(farm: FarmState): { thought: string; lastAct: stri
 }
 
 function fireIdleExtra(farm: FarmState): { thought: string; lastAct: string } | null {
+  if (farm.ripeCount > 0 || farm.groundCount > 0) return null;
   const planters = farm.agents.filter((a) => a.job === "planter").length;
   const candidates = farm.agents
     .filter((a) => a.idleSince > 15)
+    .filter((a) => a.job !== "hauler" && a.job !== "harvester")
     .filter((a) => !(a.job === "planter" && planters <= 1))
     .sort((a, b) => b.idleSince - a.idleSince);
   const target = candidates[0];
@@ -380,8 +466,12 @@ function normalizeVerb(raw: string): Exclude<keyof Policy, "waitAtBarn"> {
 }
 
 function statusThought(farm: FarmState, net: number): string {
-  if (farm.ripeCount) return `${farm.ripeCount} ripe. someone better be cutting.`;
-  if (farm.groundCount) return `${farm.groundCount} piles sulking on the dirt.`;
+  const nHaul = countJob(farm, "hauler");
+  const nHarv = countJob(farm, "harvester");
+  const wantHaul = wantHaulers(farm);
+  const wantHarv = wantHarvesters(farm);
+  if (farm.groundCount) return `${farm.groundCount} piles, ${nHaul}/${wantHaul} haulers. buying the line.`;
+  if (farm.ripeCount) return `${farm.ripeCount} ripe, ${nHarv}/${wantHarv} harvesters. buying the line.`;
   if (farm.wiltCount) return `${farm.wiltCount} wilted. we had one job.`;
   if (net > 0) return `net +${net.toFixed(1)}/min. human, go touch grass.`;
   return `barn brain watching. ${farm.agents.length} pails, ${farm.kale.toFixed(0)} kale.`;

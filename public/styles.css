@@ -53,6 +53,11 @@ button.on{background:#3d6b2f;color:#f4ffd4;border-color:#c8ff7a}
 #desires .note{opacity:.7;width:100%}
 #desires button{padding:2px 6px;font-size:10px;margin-left:auto}
 
-#stat-line.rot,#stat-line.haul{border-color:#e85d04}
+#stat-line.ripe,#stat-line.piles,#stat-line.rot,#stat-line.haul{border-color:#e85d04}
 #stat-line.ok{border-color:#7cfc00}
-#stat-line.plant{border-color:#f4d35e}
+#stat-line.empty,#stat-line.plant{border-color:#f4d35e}
+.stat.staff{min-width:148px}
+.stat.staff b{font-size:13px;letter-spacing:.2px}
+.paint-toggle{display:flex;align-items:center;gap:8px;margin:8px 0 4px;font-size:12px;cursor:pointer;user-select:none}
+.paint-toggle input{accent-color:#c8ff7a;width:15px;height:15px}
+.paint-toggle.on{color:#c8ff7a}

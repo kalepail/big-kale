@@ -25,8 +25,9 @@
           <div class="stat"><label>spend/min</label><b id="hud-spend">0.4</b></div>
           <div class="stat" id="stat-net"><label>net/min</label><b id="hud-net">-0.4</b></div>
           <div class="stat"><label>pails</label><b id="hud-agents">1</b></div>
+          <div class="stat staff"><label>staff</label><b id="hud-staff">1P 0W 0H 0Ha 0B</b></div>
           <div class="stat"><label>unused</label><b id="hud-unused">0</b></div>
-          <div class="stat" id="stat-line"><label>line</label><b id="hud-line">ok</b></div>
+          <div class="stat" id="stat-line"><label>need</label><b id="hud-line">ok</b></div>
           <button id="btn-idle" class="idle-btn" title="Cycle to next idle pail">
             idle <b id="hud-idle">1</b>
           </button>
@@ -42,7 +43,7 @@
 
       <aside id="panel">
         <div class="tools" id="farmfile-box">
-          <p class="section">Foreman / farm.md</p>
+          <p class="section">farm.md (Foreman reads this)</p>
           <textarea id="farmfile" spellcheck="false"></textarea>
           <button id="btn-save-farm">Save farm.md</button>
           <p id="foreman-thought" class="foreman-thought">barn brain booting…</p>
@@ -65,7 +66,11 @@
             <button data-tool="build">Build</button>
             <button data-tool="clear">Clear</button>
           </div>
-          <p class="hint">Jobs live on tiles. Pails claim them. You do not path units.</p>
+          <label class="paint-toggle" id="paint-label">
+            <input type="checkbox" id="paint-toggle" />
+            Paint
+          </label>
+          <p class="hint">click inspects. turn Paint on to mark tiles.</p>
         </div>
         <div class="tools">
           <p class="section">Sim</p>

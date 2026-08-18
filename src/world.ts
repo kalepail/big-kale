@@ -21,13 +21,50 @@ export class World extends Agent<Env, Persist> {
   farm: FarmState | null = null;
   lastBroadcast = 0;
   thinking = new Set<string>();
+  ticking = false;
+  lastTickAt = 0;
 
   async onStart(): Promise<void> {
     this.farm = this.state?.farm ?? createFarm();
-    await this.scheduleEvery(1, "onSimTick");
+    // scheduleEvery() did not fire in production. Drive the sim with the
+    // Durable Object alarm primitive, which Cloudflare is guaranteed to run.
+    await this.armTick();
+  }
+
+  async armTick(): Promise<void> {
+    try {
+      await this.ctx.storage.setAlarm(Date.now() + 1000);
+    } catch (err) {
+      console.error("arm tick failed", err);
+    }
+  }
+
+  /**
+   * Override so wrangler/workerd definitely bind alarm() on this class.
+   * Call Agent.alarm() first so PartyServer init + the SDK scheduler still run.
+   */
+  async alarm(): Promise<void> {
+    try {
+      await super.alarm();
+    } catch (err) {
+      console.error("agent alarm failed", err);
+    }
+    try {
+      await this.onSimTick();
+    } finally {
+      await this.armTick();
+    }
   }
 
   async onSimTick(): Promise<void> {
+    if (this.ticking) return;
+    const now = Date.now();
+    if (this.lastTickAt && now - this.lastTickAt < 400) {
+      await this.armTick();
+      return;
+    }
+    this.ticking = true;
+    this.lastTickAt = now;
     try {
       const farm = this.ensureFarm();
       // DO alarms are ~1s minimum, so run 10 physics steps per wall-clock second at 1x.
@@ -35,10 +72,23 @@ export class World extends Agent<Env, Persist> {
       for (let i = 0; i < steps; i++) stepFarm(farm, TICK_DT);
       this.lastBroadcast++;
       if (this.lastBroadcast % 2 === 0) this.pushSnap();
-      if (this.lastBroadcast % 20 === 0) this.persist();
+      this.persist();
       this.maybeUnstick();
     } catch (err) {
       console.error("sim tick failed", err);
+    } finally {
+      this.ticking = false;
+      await this.armTick();
+    }
+  }
+
+  /** Advance the sim on HTTP so polling keeps the farm alive even if alarms lag. */
+  async catchUp(): Promise<void> {
+    const now = Date.now();
+    if (!this.lastTickAt || now - this.lastTickAt >= 900) {
+      await this.onSimTick();
+    } else {
+      await this.armTick();
     }
   }
 
@@ -85,6 +135,7 @@ export class World extends Agent<Env, Persist> {
   }
 
   async onRequest(request: Request): Promise<Response> {
+    await this.catchUp();
     const farm = this.ensureFarm();
     if (request.method === "GET") {
       return Response.json({ map: toMap(farm), snap: toSnapshot(farm) });

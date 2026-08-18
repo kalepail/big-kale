@@ -1,4 +1,5 @@
 import {
+  DEFAULT_ROOT_PROMPT,
   HOME,
   JOB_STATS,
   MAP_H,
@@ -15,6 +16,41 @@ import { jobPolicy, parseJobFile } from "./policy";
 import type { Desire, FarmAgent, FarmState, Policy } from "./types";
 
 const FOREMAN_PERIOD = 2;
+
+type FarmIntent = {
+  isDefault: boolean;
+  wantExpand: boolean;
+  neverWilt: boolean;
+  maxPails: number;
+  preferPromote: boolean;
+};
+
+function parseFarmIntent(text: string): FarmIntent {
+  const raw = (text || "").trim();
+  const isDefault = !raw || raw === DEFAULT_ROOT_PROMPT.trim();
+  if (isDefault) {
+    return {
+      isDefault: true,
+      wantExpand: true,
+      neverWilt: false,
+      maxPails: MAX_AGENTS,
+      preferPromote: true,
+    };
+  }
+  const t = raw.toLowerCase();
+  const maxM = t.match(/\bmax(?:imum)?\s+(\d+)\b/);
+  const maxPails = maxM ? Math.max(1, Math.min(MAX_AGENTS, parseInt(maxM[1], 10))) : MAX_AGENTS;
+  return {
+    isDefault: false,
+    wantExpand: /\bexpand\b|\bbigger\b|more (dirt|plots)/.test(t),
+    neverWilt:
+      /\bnever let kale (wilt|rot)\b/.test(t) ||
+      /\bnever (let )?(it )?(wilt|rot)\b/.test(t) ||
+      /\b(never|don'?t|do not)\b[\s\S]{0,28}\b(wilt|rot)\b/.test(t),
+    maxPails,
+    preferPromote: /\bpromote\b/.test(t),
+  };
+}
 
 const PATCH: Record<Exclude<keyof Policy, "waitAtBarn">, string> = {
   plant: "Also till and plant empty dirt.",
@@ -53,10 +89,13 @@ function act(farm: FarmState): void {
     return;
   }
 
+  const intent = parseFarmIntent(farm.rootPrompt);
   const yieldPerMin = sumWindow(farm.yieldEvents, farm.simTime);
   const spendPerMin = farm.agents.reduce((s, a) => s + a.burn, 0);
   const netPerMin = yieldPerMin - spendPerMin;
-  const crisis = farm.ripeCount >= 1 || farm.groundCount >= 1;
+  const harvestPressure = farm.ripeCount >= 1 || (intent.neverWilt && farm.wiltCount >= 1);
+  const crisis = harvestPressure || farm.groundCount >= 1;
+  const rawHarv = rawWantHarvesters(farm);
   const wantHarv = wantHarvesters(farm);
   const wantHaul = wantHaulers(farm);
 
@@ -64,6 +103,14 @@ function act(farm: FarmState): void {
     const note = staffUp(farm, "harvester", wantHarv);
     if (note) {
       say(farm, note.thought, note.lastAct);
+      return;
+    }
+  }
+
+  if (farm.ripeCount > 0 && countJob(farm, "harvester") < rawHarv) {
+    const patched = patchHarvest(farm);
+    if (patched) {
+      say(farm, patched.thought, patched.lastAct);
       return;
     }
   }
@@ -82,7 +129,8 @@ function act(farm: FarmState): void {
   }
 
   if (crisis) {
-    if (farm.kale > 40) {
+    const promoFloor = intent.isDefault || !intent.preferPromote ? 40 : 10;
+    if (farm.kale > promoFloor) {
       const promo = tryPromoteBottleneck(farm);
       if (promo) {
         say(farm, promo.thought, promo.lastAct);
@@ -125,7 +173,7 @@ function act(farm: FarmState): void {
   }
 
   const emptyCount = realPlots(farm).filter((p) => p.state === "empty").length;
-  if (netPerMin > 0 && farm.kale > 25 && (emptyCount < 4 || homeOccupied(farm))) {
+  if (intent.wantExpand && netPerMin > 0 && farm.kale > 25 && (emptyCount < 4 || homeOccupied(farm))) {
     const tiles = findExpandTiles(farm, 4);
     if (tiles.length) {
       for (const tile of tiles) designate(farm, tile.x, tile.y, "build");
@@ -274,7 +322,8 @@ function ensureCoverage(
 }
 
 function tryHire(farm: FarmState, job: JobKind): { thought: string; lastAct: string } | null {
-  if (farm.agents.length >= MAX_AGENTS) return null;
+  const cap = Math.min(MAX_AGENTS, parseFarmIntent(farm.rootPrompt).maxPails);
+  if (farm.agents.length >= cap) return null;
   const cost = JOB_STATS[job].hire;
   if (farm.kale < cost) return null;
   const res = hireAgent(farm, job);
@@ -290,9 +339,24 @@ function countJob(farm: FarmState, job: JobKind): number {
   return farm.agents.filter((a) => a.job === job).length;
 }
 
-function wantHarvesters(farm: FarmState): number {
-  if (farm.ripeCount <= 0) return countJob(farm, "harvester");
+function rawWantHarvesters(farm: FarmState): number {
+  if (farm.ripeCount <= 0) return 0;
   return Math.max(1, Math.ceil(farm.ripeCount / RIPE_PER_HARVESTER));
+}
+
+function affordableHeadcount(farm: FarmState, job: JobKind, raw: number): number {
+  const have = countJob(farm, job);
+  const cost = JOB_STATS[job].hire;
+  const cap = Math.min(MAX_AGENTS, parseFarmIntent(farm.rootPrompt).maxPails);
+  const room = Math.max(0, cap - farm.agents.length);
+  const canPay = cost > 0 ? Math.floor(farm.kale / cost) : 0;
+  return have + Math.min(Math.max(0, raw - have), room, canPay);
+}
+
+function wantHarvesters(farm: FarmState): number {
+  const raw = rawWantHarvesters(farm);
+  if (raw <= 0) return countJob(farm, "harvester");
+  return Math.max(countJob(farm, "harvester"), Math.min(raw, affordableHeadcount(farm, "harvester", raw)));
 }
 
 function wantHaulers(farm: FarmState): number {
@@ -305,6 +369,24 @@ function wantHaulers(farm: FarmState): number {
 function staffUp(farm: FarmState, job: JobKind, want: number): { thought: string; lastAct: string } | null {
   if (countJob(farm, job) >= want) return null;
   return tryHire(farm, job);
+}
+
+function patchHarvest(farm: FarmState): { thought: string; lastAct: string } | null {
+  const target = [...farm.agents]
+    .filter((a) => a.job !== "harvester")
+    .filter((a) => !a.policy.harvest)
+    .sort((a, b) => {
+      if (a.job === "planter" && b.job !== "planter") return -1;
+      if (b.job === "planter" && a.job !== "planter") return 1;
+      return b.idleSince - a.idleSince;
+    })[0];
+  if (!target) return null;
+  patchAgent(target, PATCH.harvest);
+  target.policy = { ...target.policy, harvest: true };
+  return {
+    thought: `broke to hire. patched ${target.name} to harvest.`,
+    lastAct: `patched ${target.name} for harvest`,
+  };
 }
 
 function patchHaul(farm: FarmState): { thought: string; lastAct: string } | null {

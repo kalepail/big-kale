@@ -25,6 +25,8 @@
           <div class="stat"><label>spend/min</label><b id="hud-spend">0.4</b></div>
           <div class="stat" id="stat-net"><label>net/min</label><b id="hud-net">-0.4</b></div>
           <div class="stat"><label>pails</label><b id="hud-agents">1</b></div>
+          <div class="stat"><label>unused</label><b id="hud-unused">0</b></div>
+          <div class="stat" id="stat-line"><label>line</label><b id="hud-line">ok</b></div>
           <button id="btn-idle" class="idle-btn" title="Cycle to next idle pail">
             idle <b id="hud-idle">1</b>
           </button>
@@ -39,6 +41,20 @@
       </div>
 
       <aside id="panel">
+        <div class="tools" id="farmfile-box">
+          <p class="section">Foreman / farm.md</p>
+          <textarea id="farmfile" spellcheck="false"></textarea>
+          <button id="btn-save-farm">Save farm.md</button>
+          <p id="foreman-thought" class="foreman-thought">barn brain booting…</p>
+        </div>
+        <div class="tools">
+          <p class="section">Desires</p>
+          <div class="desire-row">
+            <input id="desire-text" type="text" maxlength="400" placeholder="never let kale rot" />
+            <button id="btn-desire">Queue</button>
+          </div>
+          <ul id="desires"></ul>
+        </div>
         <div class="tools">
           <p class="section">Designate</p>
           <div class="row wrap" id="tools">
@@ -62,7 +78,7 @@
         <div class="tools">
           <p class="section">Hire a pail</p>
           <div class="hire" id="hire"></div>
-          <p class="hint">Max 8. Burn is forever (until you fire them).</p>
+          <p class="hint">Foreman hires when the file says so. This is the manual override. Promote pails before hiring clones. Max 32.</p>
         </div>
         <div id="inspect" class="inspect">
           <p class="section">Inspect</p>

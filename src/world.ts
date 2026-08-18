@@ -24,13 +24,14 @@ export class World extends Agent<Env, Persist> {
 
   async onStart(): Promise<void> {
     this.farm = this.state?.farm ?? createFarm();
-    await this.scheduleEvery(0.1, "onSimTick");
+    await this.scheduleEvery(1, "onSimTick");
   }
 
   async onSimTick(): Promise<void> {
     try {
       const farm = this.ensureFarm();
-      const steps = farm.speed;
+      // DO alarms are ~1s minimum, so run 10 physics steps per wall-clock second at 1x.
+      const steps = Math.max(1, farm.speed * 10);
       for (let i = 0; i < steps; i++) stepFarm(farm, TICK_DT);
       this.lastBroadcast++;
       if (this.lastBroadcast % 2 === 0) this.pushSnap();

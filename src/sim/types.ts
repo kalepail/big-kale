@@ -78,6 +78,7 @@ export interface ForemanState {
   lastAct: string;
   cooldown: number;
   thinking: boolean;
+  holdUntil: number;
 }
 
 export interface FarmState {

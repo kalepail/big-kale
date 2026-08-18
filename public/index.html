@@ -20,16 +20,16 @@
           </div>
         </div>
         <div class="rates">
-          <div class="stat kale"><label>KALE</label><b id="hud-kale">40.0</b></div>
-          <div class="stat"><label>yield/min</label><b id="hud-yield">+0.0</b></div>
-          <div class="stat"><label>spend/min</label><b id="hud-spend">0.4</b></div>
-          <div class="stat" id="stat-net"><label>net/min</label><b id="hud-net">-0.4</b></div>
-          <div class="stat"><label>pails</label><b id="hud-agents">1</b></div>
-          <div class="stat staff"><label>staff</label><b id="hud-staff">1P 0W 0H 0Ha 0B</b></div>
-          <div class="stat"><label>unused</label><b id="hud-unused">0</b></div>
-          <div class="stat" id="stat-line"><label>need</label><b id="hud-line">ok</b></div>
+          <div class="stat kale"><label>KALE</label><b id="hud-kale">…</b></div>
+          <div class="stat"><label>yield/min</label><b id="hud-yield">…</b></div>
+          <div class="stat"><label>spend/min</label><b id="hud-spend">…</b></div>
+          <div class="stat" id="stat-net"><label>net/min</label><b id="hud-net">…</b></div>
+          <div class="stat"><label>pails</label><b id="hud-agents">…</b></div>
+          <div class="stat staff"><label>staff</label><b id="hud-staff">…</b></div>
+          <div class="stat"><label>unused</label><b id="hud-unused">…</b></div>
+          <div class="stat" id="stat-line"><label>need</label><b id="hud-line">…</b></div>
           <button id="btn-idle" class="idle-btn" title="Cycle to next idle pail">
-            idle <b id="hud-idle">1</b>
+            cycle idle <b id="hud-idle">…</b>
           </button>
         </div>
         <div class="alerts" id="alerts"></div>
@@ -42,6 +42,15 @@
       </div>
 
       <aside id="panel">
+        <div id="inspect" class="inspect">
+          <p class="section">Inspect</p>
+          <p class="muted">Click a tile, a pail, or the barn.</p>
+        </div>
+        <div id="editor" class="editor hidden">
+          <p class="section">Job file <span id="editor-name"></span></p>
+          <textarea id="jobfile" spellcheck="false"></textarea>
+          <button id="btn-save">Save → replan</button>
+        </div>
         <div class="tools" id="farmfile-box">
           <p class="section">farm.md (Foreman reads this)</p>
           <textarea id="farmfile" spellcheck="false"></textarea>
@@ -84,15 +93,6 @@
           <p class="section">Hire a pail</p>
           <div class="hire" id="hire"></div>
           <p class="hint">Foreman hires when the file says so. This is the manual override. Promote pails before hiring clones. Max 32.</p>
-        </div>
-        <div id="inspect" class="inspect">
-          <p class="section">Inspect</p>
-          <p class="muted">Click a tile, a pail, or the barn.</p>
-        </div>
-        <div id="editor" class="editor hidden">
-          <p class="section">Job file <span id="editor-name"></span></p>
-          <textarea id="jobfile" spellcheck="false"></textarea>
-          <button id="btn-save">Save → replan</button>
         </div>
       </aside>
     </div>

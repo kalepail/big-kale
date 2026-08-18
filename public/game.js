@@ -8,11 +8,41 @@ const JOBS = [
   { id: "builder", label: "Builder", hire: 20, burn: 0.9 },
 ];
 const BAND = { planter: "#7cfc00", worker: "#f4d35e", harvester: "#e85d04", hauler: "#4cc9f0", builder: "#b5651d" };
+const ROMAN = ["I", "II", "III", "IV", "V"];
+function pailRank(a) {
+  const r = Math.max(1, Math.min(5, Math.floor(a?.rank || 1)));
+  return r;
+}
+function pailTitle(a) {
+  return "Pail " + ROMAN[pailRank(a) - 1];
+}
+
 
 const canvas = document.getElementById("farm");
 const mini = document.getElementById("minimap");
 const ctx = canvas.getContext("2d");
 const mctx = mini.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+mctx.imageSmoothingEnabled = false;
+
+const vis = new Map();
+const hudEl = {
+  kale: document.getElementById("hud-kale"),
+  yield: document.getElementById("hud-yield"),
+  spend: document.getElementById("hud-spend"),
+  net: document.getElementById("hud-net"),
+  statNet: document.getElementById("stat-net"),
+  agents: document.getElementById("hud-agents"),
+  idle: document.getElementById("hud-idle"),
+  unused: document.getElementById("hud-unused"),
+  line: document.getElementById("hud-line"),
+  statLine: document.getElementById("stat-line"),
+  btnIdle: document.getElementById("btn-idle"),
+  alerts: document.getElementById("alerts"),
+  thought: document.getElementById("foreman-thought"),
+  farmfile: document.getElementById("farmfile"),
+  toast: document.getElementById("toast"),
+};
 
 const cam = { x: 20 * TILE, y: 16 * TILE, z: 1.15 };
 const keys = new Set();
@@ -36,6 +66,7 @@ function resize() {
   const stage = document.getElementById("stage");
   canvas.width = stage.clientWidth;
   canvas.height = stage.clientHeight;
+  ctx.imageSmoothingEnabled = false;
 }
 window.addEventListener("resize", resize);
 resize();
@@ -48,17 +79,78 @@ function applyWorld(data) {
   if (next) {
     const first = !snap;
     snap = next;
+    syncVis(next.agents);
     paintHud();
     if (first || !didCenter) centerOnFirstSnap();
+    if (first) {
+      const farmfile = document.getElementById("farmfile");
+      if (farmfile && document.activeElement !== farmfile) farmfile.value = next.rootPrompt || "";
+    }
     if (selected?.kind === "agent") {
       const a = next.agents.find((x) => x.id === selected.id);
       if (a) renderInspectAgent(a);
+    } else if (selected?.kind === "barn") {
+      renderInspectBarn();
     }
   }
   if (!greeted && snap) {
     greeted = true;
     toast("connected to kale-1. one planter. forty kale. write a file.");
   }
+}
+
+function syncVis(agents) {
+  for (let i = 0; i < agents.length; i++) {
+    const a = agents[i];
+    const v = vis.get(a.id);
+    if (v) {
+      v.fromX = v.x;
+      v.fromY = v.y;
+      v.toX = a.x;
+      v.toY = a.y;
+      v.t0 = performance.now();
+      v.keep = 1;
+    } else {
+      vis.set(a.id, { x: a.x, y: a.y, fromX: a.x, fromY: a.y, toX: a.x, toY: a.y, t0: performance.now(), keep: 1 });
+    }
+  }
+  vis.forEach((v, id) => {
+    if (v.keep) v.keep = 0;
+    else vis.delete(id);
+  });
+}
+
+function stepVis(v) {
+  const u = Math.min(1, (this - v.t0) / 250);
+  v.x = v.fromX + (v.toX - v.fromX) * u;
+  v.y = v.fromY + (v.toY - v.fromY) * u;
+}
+
+function visPos(id, fallbackX, fallbackY, out) {
+  const v = vis.get(id);
+  if (v) {
+    out.x = v.x;
+    out.y = v.y;
+  } else {
+    out.x = fallbackX;
+    out.y = fallbackY;
+  }
+  return out;
+}
+
+const _hit = { x: 0, y: 0 };
+const _drawPos = { x: 0, y: 0 };
+
+function hitAgentAt(tx, ty) {
+  if (!snap) return null;
+  const cx = tx + 0.5, cy = ty + 0.5;
+  const list = snap.agents;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const a = list[i];
+    visPos(a.id, a.x, a.y, _hit);
+    if (Math.hypot(_hit.x - cx, _hit.y - cy) < 0.65) return a;
+  }
+  return null;
 }
 
 function centerOnFirstSnap() {
@@ -154,20 +246,55 @@ function toast(msg) {
 function paintHud() {
   if (!snap) return;
   const h = snap.hud;
-  document.getElementById("hud-kale").textContent = h.kale.toFixed(1);
-  document.getElementById("hud-yield").textContent = (h.yieldPerMin >= 0 ? "+" : "") + h.yieldPerMin.toFixed(1);
-  document.getElementById("hud-spend").textContent = h.spendPerMin.toFixed(2);
-  const net = document.getElementById("hud-net");
-  net.textContent = (h.netPerMin >= 0 ? "+" : "") + h.netPerMin.toFixed(2);
-  document.getElementById("stat-net").style.borderColor = h.netPerMin >= 0 ? "#7cfc00" : "#e85d04";
-  document.getElementById("hud-agents").textContent = String(h.agents);
-  document.getElementById("hud-idle").textContent = String(h.idle);
-  document.getElementById("btn-idle").classList.toggle("on", h.idle > 0);
+  hudEl.kale.textContent = h.kale.toFixed(1);
+  hudEl.yield.textContent = (h.yieldPerMin >= 0 ? "+" : "") + h.yieldPerMin.toFixed(1);
+  hudEl.spend.textContent = h.spendPerMin.toFixed(2);
+  hudEl.net.textContent = (h.netPerMin >= 0 ? "+" : "") + h.netPerMin.toFixed(2);
+  hudEl.statNet.style.borderColor = h.netPerMin >= 0 ? "#7cfc00" : "#e85d04";
+  hudEl.agents.textContent = String(h.agents);
+  hudEl.idle.textContent = String(h.idle);
+  hudEl.btnIdle.classList.toggle("on", h.idle > 0);
+  const unused = h.unused ?? 0;
+  hudEl.unused.textContent = unused.toFixed(1);
+  const line = h.bottleneck || "ok";
+  hudEl.line.textContent = line;
+  hudEl.statLine.classList.remove("rot", "haul", "plant", "ok");
+  hudEl.statLine.classList.add(line);
   const bits = [];
+  if (line && line !== "ok") bits.push(line);
   if (h.ripe) bits.push(`${h.ripe} ripe`);
-  if (h.wilted) bits.push(`${h.wilted} wilting/wilted`);
-  if (h.ground) bits.push(`${h.ground} piles on the ground`);
-  document.getElementById("alerts").textContent = bits.join(" · ");
+  if (h.wilted) bits.push(`${h.wilted} wilted`);
+  if (h.ground) bits.push(`${h.ground} piles`);
+  if (unused) bits.push(`unused ${unused.toFixed(1)}`);
+  hudEl.alerts.textContent = bits.join(" · ");
+  if (hudEl.thought) hudEl.thought.textContent = snap.foreman?.thought || "barn brain quiet.";
+  if (hudEl.farmfile && document.activeElement !== hudEl.farmfile) hudEl.farmfile.value = snap.rootPrompt || "";
+  paintDesires();
+}
+
+function paintDesires() {
+  const list = document.getElementById("desires");
+  if (!list) return;
+  const items = snap.desires || [];
+  list.innerHTML = items.length ? items.map((d) => {
+    const cancel = d.status !== "done"
+      ? `<button onclick='send({type:"cancelDesire",id:${d.id}})'>cancel</button>`
+      : "";
+    const note = d.note ? `<div class="note">${escapeHtml(d.note)}</div>` : "";
+    return `<li><span class="st ${d.status}">${d.status}</span><span class="dtext">${escapeHtml(d.text)}</span>${cancel}${note}</li>`;
+  }).join("") : `<li class="muted">no desires. the barn invents its own.</li>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function queueDesire() {
+  const el = document.getElementById("desire-text");
+  const text = (el.value || "").trim();
+  if (!text) return;
+  send({ type: "desire", text });
+  el.value = "";
 }
 
 // tools
@@ -197,6 +324,16 @@ document.getElementById("btn-save").onclick = () => {
   if (selected?.kind !== "agent") return;
   send({ type: "saveJob", id: selected.id, markdown: document.getElementById("jobfile").value });
 };
+document.getElementById("btn-save-farm").onclick = () => {
+  send({ type: "saveFarm", markdown: document.getElementById("farmfile").value });
+};
+document.getElementById("btn-desire").onclick = queueDesire;
+document.getElementById("desire-text").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    queueDesire();
+  }
+});
 
 window.addEventListener("keydown", (e) => {
   keys.add(e.key.toLowerCase());
@@ -218,7 +355,7 @@ canvas.addEventListener("mousedown", (e) => {
   if (!t) return;
   lastTile = t;
   if (snap) {
-    const hit = [...snap.agents].reverse().find((a) => Math.hypot(a.x - (t.x + 0.5), a.y - (t.y + 0.5)) < 0.65);
+    const hit = hitAgentAt(t.x, t.y);
     if (hit && !e.ctrlKey) { selectAgent(hit); return; }
   }
   const barn = map.barn;
@@ -277,7 +414,7 @@ function screenToTile(e) {
 function inspectAt(t, e) {
   const barn = map.barn;
   if (snap) {
-    const hit = [...snap.agents].reverse().find((a) => Math.hypot(a.x - (t.x + 0.5), a.y - (t.y + 0.5)) < 0.65);
+    const hit = hitAgentAt(t.x, t.y);
     if (hit) { selectAgent(hit); return; }
   }
   if (t.x >= barn.x && t.x < barn.x + barn.w && t.y >= barn.y && t.y < barn.y + barn.h) {
@@ -306,8 +443,9 @@ function cycleIdle() {
   const id = snap.idleIds[idleCycle++];
   const a = snap.agents.find((x) => x.id === id);
   if (!a) return;
-  cam.x = a.x * TILE - canvas.width / (2 * cam.z);
-  cam.y = a.y * TILE - canvas.height / (2 * cam.z);
+  visPos(a.id, a.x, a.y, _hit);
+  cam.x = _hit.x * TILE - canvas.width / (2 * cam.z);
+  cam.y = _hit.y * TILE - canvas.height / (2 * cam.z);
   selectAgent(a);
   toast(`${a.name} is idle. edit the file or queue an order.`);
 }
@@ -342,16 +480,24 @@ function renderInspectBarn() {
     <p>The barn is the wallet. There is no wallet.</p>
     <div>stockpile: ${stock.toFixed(1)} KALE hauled</div>
     <div>liquid KALE: ${(snap?.hud.kale ?? 0).toFixed(1)}</div>
-    <p class="muted">Haulers drop here. Hire is paid from liquid KALE.</p>`;
+    <p class="muted">Haulers drop here. Hire is paid from liquid KALE.</p>
+    <p class="muted">Foreman: ${snap?.foreman?.thought || "—"}</p>
+    <p class="muted">last act: ${snap?.foreman?.lastAct || "—"}</p>`;
 }
 
 function renderInspectAgent(a) {
   const el = document.getElementById("inspect");
+  const rank = pailRank(a);
+  const nextCost = 10 * rank;
+  const promo = rank >= 5
+    ? `<p class="muted">Pail V. cannot promote further.</p>`
+    : `<button style="margin-top:8px;width:100%" onclick='send({type:"promote",id:"${a.id}"})'>Promote to ${"Pail " + ROMAN[rank]} (${nextCost} KALE)</button>`;
   el.innerHTML = `<h3>${a.name} <span style="color:${BAND[a.job]}">●</span></h3>
-    <div>${a.job} · burn ${a.burn}/min</div>
+    <div>${a.job} · ${pailTitle(a)} · burn ${a.burn}/min</div>
     <div>action: <b>${a.action}</b> — ${a.detail}</div>
     <div>carrying: ${a.carrying.toFixed(2)}</div>
     <div class="muted">${a.thinking ? "thinking…" : a.thought}</div>
+    ${promo}
     <p class="muted">Queue an order on last tile ${lastTile.x},${lastTile.y} (or ctrl-click a tile).</p>
     <div class="queue">
       ${["plant","tend","harvest","haul","build"].map((k) =>
@@ -370,9 +516,14 @@ window.send = send;
 function worldX(x) { return (x * TILE - cam.x) * cam.z; }
 function worldY(y) { return (y * TILE - cam.y) * cam.z; }
 
-function draw() {
+let lastDraw = 0;
+let miniFrame = 0;
+function draw(now) {
   requestAnimationFrame(draw);
-  const dt = 1 / 60;
+  if (document.hidden) return;
+  const t = typeof now === "number" ? now : performance.now();
+  const dt = lastDraw ? Math.min(0.05, (t - lastDraw) / 1000) : 1 / 60;
+  lastDraw = t;
   let mx = 0, my = 0;
   if (keys.has("a") || keys.has("arrowleft")) mx -= 1;
   if (keys.has("d") || keys.has("arrowright")) mx += 1;
@@ -380,19 +531,19 @@ function draw() {
   if (keys.has("s") || keys.has("arrowdown")) my += 1;
   cam.x += mx * 420 * dt / cam.z;
   cam.y += my * 420 * dt / cam.z;
+  vis.forEach(stepVis, t);
   if (toastTimer > 0) toastTimer--;
-  document.getElementById("toast").style.opacity = toastTimer > 0 ? "1" : "0";
+  hudEl.toast.style.opacity = toastTimer > 0 ? "1" : "0";
   renderFarm();
-  renderMini();
+  if ((miniFrame++ & 3) === 0) renderMini();
 }
-draw();
+requestAnimationFrame(draw);
 
 function terrainAt(x, y) {
   return map.terrain[y * MAP_W + x] || 0;
 }
 
 function renderFarm() {
-  ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#1e2e18";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const z = cam.z;
@@ -553,8 +704,9 @@ function drawWell() {
 
 function drawPail(a) {
   const z = cam.z;
-  const px = (a.x * TILE - cam.x) * z;
-  const py = (a.y * TILE - cam.y) * z;
+  visPos(a.id, a.x, a.y, _drawPos);
+  const px = (_drawPos.x * TILE - cam.x) * z;
+  const py = (_drawPos.y * TILE - cam.y) * z;
   const s = TILE * z;
   // shadow
   ctx.fillStyle = "rgba(0,0,0,.25)";
@@ -635,7 +787,8 @@ function renderMini() {
     }
     c.fillStyle = "#fff";
     for (const a of snap.agents) {
-      c.fillRect(a.x * sx - 1, a.y * sy - 1, 3, 3);
+      visPos(a.id, a.x, a.y, _drawPos);
+      c.fillRect(_drawPos.x * sx - 1, _drawPos.y * sy - 1, 3, 3);
     }
   }
   c.strokeStyle = "#c8ff7a";

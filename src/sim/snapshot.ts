@@ -1,6 +1,6 @@
-import { BARN, WELL } from "./constants";
+import { BARN, WELL, type JobKind } from "./constants";
 import { sumWindow } from "./farm";
-import type { FarmState, MapMessage, Snapshot } from "./types";
+import type { FarmState, HudRates, MapMessage, Snapshot } from "./types";
 
 export function actionLabel(farmAgentAction: FarmState["agents"][number]["action"]): { action: string; detail: string } {
   const a = farmAgentAction;
@@ -18,7 +18,20 @@ export function actionLabel(farmAgentAction: FarmState["agents"][number]["action
 export function toSnapshot(farm: FarmState): Snapshot {
   const yieldPerMin = sumWindow(farm.yieldEvents, farm.simTime);
   const spendBurn = farm.agents.reduce((s, a) => s + a.burn, 0);
+  const spendWindow = sumWindow(farm.spendEvents, farm.simTime);
   const idle = farm.agents.filter((a) => a.action.type === "idle");
+  const staff: HudRates["staff"] = { planter: 0, worker: 0, harvester: 0, hauler: 0, builder: 0 };
+  let unused = 0;
+  let emptyDirt = 0;
+  for (const plot of farm.plots) {
+    unused += plot.groundKale;
+    if (plot.state === "empty" || plot.state === "wilted" || plot.state === "tilled") emptyDirt++;
+  }
+  for (const a of farm.agents) staff[a.job as JobKind]++;
+  let bottleneck: HudRates["bottleneck"] = "ok";
+  if (farm.ripeCount >= 3 || (farm.ripeCount >= 1 && staff.harvester === 0)) bottleneck = "rot";
+  else if (farm.groundCount >= 3) bottleneck = "haul";
+  else if (emptyDirt >= 6 && staff.planter === 0) bottleneck = "plant";
   return {
     type: "snap",
     tick: farm.tick,
@@ -34,6 +47,9 @@ export function toSnapshot(farm: FarmState): Snapshot {
       ripe: farm.ripeCount,
       wilted: farm.wiltCount,
       ground: farm.groundCount,
+      unused,
+      bottleneck,
+      staff,
     },
     barn: { ...BARN, stock: farm.barnStock },
     well: { ...WELL },
@@ -55,9 +71,17 @@ export function toSnapshot(farm: FarmState): Snapshot {
         thinking: a.thinking,
         thought: a.thought,
         forced: a.forced,
+        rank: a.rank || 1,
       };
     }),
     idleIds: idle.map((a) => a.id),
+    rootPrompt: farm.rootPrompt || "",
+    desires: (farm.desires || []).slice(-12),
+    foreman: {
+      thought: farm.foreman?.thought || "",
+      lastAct: farm.foreman?.lastAct || "",
+      thinking: !!farm.foreman?.thinking,
+    },
   };
 }
 

@@ -44,6 +44,7 @@ export interface FarmAgent {
   carrying: number;
   thinking: boolean;
   thought: string;
+  rank: number;
 }
 
 export interface Plot {
@@ -64,6 +65,21 @@ export interface LedgerEvent {
   amt: number;
 }
 
+export interface Desire {
+  id: number;
+  text: string;
+  t: number;
+  status: "queued" | "doing" | "done";
+  note: string;
+}
+
+export interface ForemanState {
+  thought: string;
+  lastAct: string;
+  cooldown: number;
+  thinking: boolean;
+}
+
 export interface FarmState {
   tick: number;
   simTime: number;
@@ -80,6 +96,10 @@ export interface FarmState {
   ripeCount: number;
   wiltCount: number;
   groundCount: number;
+  rootPrompt: string;
+  desires: Desire[];
+  nextDesireId: number;
+  foreman: ForemanState;
 }
 
 export interface HudRates {
@@ -92,6 +112,9 @@ export interface HudRates {
   ripe: number;
   wilted: number;
   ground: number;
+  unused: number;
+  bottleneck: "rot" | "haul" | "plant" | "ok";
+  staff: { planter: number; worker: number; harvester: number; hauler: number; builder: number };
 }
 
 export interface Snapshot {
@@ -118,8 +141,12 @@ export interface Snapshot {
     thinking: boolean;
     thought: string;
     forced: ForcedOrder | null;
+    rank: number;
   }>;
   idleIds: string[];
+  rootPrompt: string;
+  desires: Desire[];
+  foreman: { thought: string; lastAct: string; thinking: boolean };
 }
 
 export interface MapMessage {

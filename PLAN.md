@@ -37,10 +37,10 @@ Jobs live on tiles. Pails claim them with deterministic A-star. Idle badge cycle
 ## Sim
 
 - 48x48 orthographic tilemap, 10 Hz physics.
-- Grow about 32s plus 12s ripe window, about 45s at 1x.
-- Wilt if you do not harvest.
+- Grow about 32s plus 48s ripe window. Wilt is only unharvested ripe; piles on the dirt are unused inventory, not failure.
+- Foreman WireBuyer staffs to pile/ripe ratios (6 piles/hauler, 5 ripe/harvester) and never fires, expands, or promotes planters while a harvest or haul backlog exists. Haulers chain nearby piles up to 4 carry before the barn trip.
 - Speed 1 / 3 / 10.
-- Max 8 agents.
+- Max 32 agents. Promote pails (rank I–V) before hiring clones.
 - Start: 40 KALE, one idle Planter, empty home plots, barn, well.
 
 ## LLM (optional)

@@ -1,0 +1,18 @@
+{
+  "name": "big-kale",
+  "version": "0.1.0",
+  "private": true,
+  "description": "You do not farm. You write markdown. Pails plant, work, and harvest KALE.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types src/env.d.ts --include-runtime false"
+  },
+  "dependencies": {
+    "agents": "^0.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "wrangler": "^4.28.0"
+  }
+}

@@ -1,11 +1,12 @@
 import { Agent, type Connection, getAgentByName } from "agents";
 import { JOBS, LLM_IDLE_SECONDS, LLM_MIN_KALE, TICK_DT, type JobKind } from "./sim/constants";
-import { createFarm } from "./sim/farm";
+import { createFarm, ensureFarmShape } from "./sim/farm";
 import { toMap, toSnapshot } from "./sim/snapshot";
 import {
   designate,
   fireAgent,
   hireAgent,
+  promoteAgent,
   queueOrder,
   saveJob,
   setSpeed,
@@ -25,7 +26,7 @@ export class World extends Agent<Env, Persist> {
   lastTickAt = 0;
 
   async onStart(): Promise<void> {
-    this.farm = this.state?.farm ?? createFarm();
+    this.farm = ensureFarmShape(this.state?.farm ?? createFarm());
     // scheduleEvery() did not fire in production. Drive the sim with the
     // Durable Object alarm primitive, which Cloudflare is guaranteed to run.
     await this.armTick();
@@ -94,6 +95,7 @@ export class World extends Agent<Env, Persist> {
 
   ensureFarm(): FarmState {
     if (!this.farm) this.farm = this.state?.farm ?? createFarm();
+    ensureFarmShape(this.farm);
     return this.farm;
   }
 
@@ -191,6 +193,43 @@ export class World extends Agent<Env, Persist> {
         });
         this.persist();
         return res;
+      }
+      if (type === "saveFarm") {
+        farm.rootPrompt = String(data.markdown ?? "").slice(0, 8000);
+        farm.foreman.thought = "saved farm.md. Foreman will use it.";
+        farm.foreman.lastAct = "human saved farm.md";
+        farm.foreman.holdUntil = Date.now() + 8000;
+        this.persist();
+        return { ok: true, msg: "saved farm.md. Foreman will use it." };
+      }
+      if (type === "desire") {
+        const raw = String(data.text ?? "").trim().slice(0, 400);
+        if (!raw) return { ok: false, msg: "empty desire" };
+        farm.desires.push({
+          id: farm.nextDesireId++,
+          text: raw,
+          t: farm.simTime,
+          status: "queued",
+          note: "",
+        });
+        farm.foreman.thought = `queued: ${raw}`;
+        this.persist();
+        return { ok: true, msg: `desire queued: ${raw}` };
+      }
+      if (type === "cancelDesire") {
+        const id = Number(data.id);
+        const d = farm.desires.find((x) => x.id === id);
+        if (!d) return { ok: false, msg: "no such desire" };
+        if (d.status === "done") return { ok: false, msg: "already done" };
+        d.status = "done";
+        d.note = "cancelled by the human";
+        this.persist();
+        return { ok: true, msg: "desire cancelled" };
+      }
+      if (type === "promote") {
+        const res = promoteAgent(farm, String(data.id));
+        this.persist();
+        return { ok: res.ok, msg: res.msg, extra: res.agent ? { id: res.agent.id, rank: res.agent.rank } : undefined };
       }
       if (type === "reset") {
         this.farm = createFarm();

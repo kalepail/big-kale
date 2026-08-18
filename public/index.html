@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Big Kale — you do not farm</title>
+    <title>Big Kale</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Lilita+One&display=swap" rel="stylesheet" />
@@ -12,61 +12,30 @@
   <body>
     <div id="app">
       <header id="hud">
-        <div class="brand">
-          <span class="logo">BK</span>
-          <div>
-            <h1>Big Kale</h1>
-            <p class="tag">you do not farm. you write files.</p>
-          </div>
+        <div class="kale-slot">
+          <span class="leaf" aria-hidden="true">BK</span>
+          <b id="hud-kale">…</b>
         </div>
-        <div class="rates">
-          <div class="stat kale"><label>KALE</label><b id="hud-kale">…</b></div>
-          <div class="stat"><label>yield/min</label><b id="hud-yield">…</b></div>
-          <div class="stat"><label>spend/min</label><b id="hud-spend">…</b></div>
-          <div class="stat" id="stat-net"><label>net/min</label><b id="hud-net">…</b></div>
-          <div class="stat"><label>pails</label><b id="hud-agents">…</b></div>
-          <div class="stat staff"><label>staff</label><b id="hud-staff">…</b></div>
-          <div class="stat"><label>unused</label><b id="hud-unused">…</b></div>
-          <div class="stat" id="stat-line"><label>need</label><b id="hud-line">…</b></div>
-          <button id="btn-idle" class="idle-btn" title="Cycle to next idle pail">
-            cycle idle <b id="hud-idle">…</b>
-          </button>
+        <div class="net-slot" id="stat-net">
+          <b id="hud-net">…</b>
+          <small><span id="hud-yield">…</span> / <span id="hud-spend">…</span></small>
         </div>
-        <div class="alerts" id="alerts"></div>
+        <div class="staff" id="hud-staff">
+          <button type="button" data-job="planter" title="Planters">P <b id="chip-p">0</b></button>
+          <button type="button" data-job="worker" title="Workers">W <b id="chip-w">0</b></button>
+          <button type="button" data-job="harvester" title="Harvesters">H <b id="chip-h">0</b></button>
+          <button type="button" data-job="hauler" title="Haulers">Ha <b id="chip-ha">0</b></button>
+          <button type="button" data-job="builder" title="Builders">B <b id="chip-b">0</b></button>
+        </div>
+        <div id="hud-crisis" class="crisis hidden">ok</div>
+        <button id="btn-idle" class="idle-btn" title="Cycle idle pail (I)">IDLE <b id="hud-idle">0</b></button>
       </header>
-
       <div id="stage">
         <canvas id="farm"></canvas>
         <canvas id="minimap" width="144" height="144"></canvas>
         <div id="toast"></div>
-      </div>
-
-      <aside id="panel">
-        <div id="inspect" class="inspect">
-          <p class="section">Inspect</p>
-          <p class="muted">Click a tile, a pail, or the barn.</p>
-        </div>
-        <div id="editor" class="editor hidden">
-          <p class="section">Job file <span id="editor-name"></span></p>
-          <textarea id="jobfile" spellcheck="false"></textarea>
-          <button id="btn-save">Save → replan</button>
-        </div>
-        <div class="tools" id="farmfile-box">
-          <p class="section">farm.md (Foreman reads this)</p>
-          <textarea id="farmfile" spellcheck="false"></textarea>
-          <button id="btn-save-farm">Save farm.md</button>
-          <p id="foreman-thought" class="foreman-thought">barn brain booting…</p>
-        </div>
-        <div class="tools">
-          <p class="section">Desires</p>
-          <div class="desire-row">
-            <input id="desire-text" type="text" maxlength="400" placeholder="never let kale rot" />
-            <button id="btn-desire">Queue</button>
-          </div>
-          <ul id="desires"></ul>
-        </div>
-        <div class="tools">
-          <p class="section">Designate</p>
+        <span id="brand-leaf" aria-hidden="true">BK</span>
+        <div id="cmd">
           <div class="row wrap" id="tools">
             <button data-tool="plant">Plant</button>
             <button data-tool="tend">Tend</button>
@@ -74,27 +43,39 @@
             <button data-tool="haul">Haul</button>
             <button data-tool="build">Build</button>
             <button data-tool="clear">Clear</button>
+            <button type="button" id="paint-toggle">Paint</button>
           </div>
-          <label class="paint-toggle" id="paint-label">
-            <input type="checkbox" id="paint-toggle" />
-            Paint
-          </label>
-          <p class="hint">click inspects. turn Paint on to mark tiles.</p>
-        </div>
-        <div class="tools">
-          <p class="section">Sim</p>
           <div class="row" id="speeds">
             <button data-speed="1" class="on">1×</button>
             <button data-speed="3">3×</button>
             <button data-speed="10">10×</button>
           </div>
         </div>
-        <div class="tools">
-          <p class="section">Hire a pail</p>
-          <div class="hire" id="hire"></div>
-          <p class="hint">Foreman hires when the file says so. This is the manual override. Promote pails before hiring clones. Max 32.</p>
+        <div id="card" class="hidden">
+          <div id="inspect" class="inspect">
+            <p class="muted">Click a pail, a plot, or the barn.</p>
+          </div>
+          <div id="editor" class="editor hidden">
+            <p class="section">Job file <span id="editor-name"></span></p>
+            <textarea id="jobfile" spellcheck="false"></textarea>
+            <button id="btn-save">Save → replan</button>
+          </div>
+          <div id="barn-tools" class="hidden">
+            <p class="section">Hire</p>
+            <div class="hire" id="hire"></div>
+            <p class="section">farm.md</p>
+            <textarea id="farmfile" spellcheck="false"></textarea>
+            <button id="btn-save-farm">Save farm.md</button>
+            <p id="foreman-thought" class="foreman-thought">barn brain booting…</p>
+            <p class="section">Desires</p>
+            <div class="desire-row">
+              <input id="desire-text" type="text" maxlength="400" placeholder="never let kale rot" />
+              <button id="btn-desire">Queue</button>
+            </div>
+            <ul id="desires"></ul>
+          </div>
         </div>
-      </aside>
+      </div>
     </div>
     <script src="/game.js"></script>
   </body>

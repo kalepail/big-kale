@@ -1,22 +1,25 @@
 import {
-  BARN,
   GROW_TIME,
   JOB_STATS,
-  MAP_H,
   MAP_W,
-  MAX_AGENTS,
+  MAX_CARRY,
   TERRAIN,
   WILT_TIME,
   WALK_SPEED,
   WORK_TIME,
-  type JobKind,
 } from "./constants";
-import { emptyPlot, plotAt, pruneLedger, spawnAgent } from "./farm";
-import { astar, barnDoor, nearestWalkable, walkable } from "./pathfinding";
-import { jobPolicy } from "./policy";
+import { emptyPlot, plotAt, pruneLedger } from "./farm";
+import { stepForeman } from "./foreman";
+import { rankFactor, unclaim } from "./ops";
+import { astar, barnDoor, nearestWalkable } from "./pathfinding";
 import type { AgentAction, Designation, FarmAgent, FarmState, ForcedOrder, Plot } from "./types";
 
 const DIRS: Designation[] = ["plant", "tend", "harvest", "haul", "build"];
+
+function workDur(agent: FarmAgent, kind: string): number {
+  return WORK_TIME[kind] / rankFactor(agent.rank);
+}
+
 
 export function stepFarm(farm: FarmState, dt: number): void {
   farm.tick++;
@@ -31,6 +34,7 @@ export function stepFarm(farm: FarmState, dt: number): void {
   }
   recount(farm);
   pruneLedger(farm);
+  stepForeman(farm, dt);
 }
 
 function growPlots(farm: FarmState, dt: number): void {
@@ -77,7 +81,7 @@ function stepAgent(farm: FarmState, agent: FarmAgent, dt: number): void {
       agent.action = act.after;
       return;
     }
-    const speed = farm.kale <= 0 ? WALK_SPEED * 0.5 : WALK_SPEED;
+    const speed = (farm.kale <= 0 ? WALK_SPEED * 0.5 : WALK_SPEED) * rankFactor(agent.rank);
     const dx = node.x + 0.5 - agent.x;
     const dy = node.y + 0.5 - agent.y;
     const dist = Math.hypot(dx, dy);
@@ -111,6 +115,9 @@ function finishWork(
     plot.yield = 1;
     plot.tended = 0;
     plot.wilt = 0;
+    if (plot.designation === "plant") {
+      // keep designation so planter plants next
+    }
   } else if (act.kind === "plant" && plot) {
     plot.state = "planted";
     plot.growth = 0;
@@ -140,6 +147,23 @@ function finishWork(
     if (plot.designation === "haul") plot.designation = null;
     if (amt > 0) {
       agent.carrying += amt;
+      unclaim(plot, agent.id);
+      if (agent.carrying < MAX_CARRY) {
+        const next = findNearbyPile(farm, agent, 4);
+        if (next) {
+          next.claimedBy = agent.id;
+          goDo(farm, agent, next.x, next.y, {
+            type: "work",
+            kind: "pickup",
+            x: next.x,
+            y: next.y,
+            t: 0,
+            dur: workDur(agent, "pickup"),
+          });
+          agent.thought = "chaining piles. barn can wait.";
+          return;
+        }
+      }
       const door = barnDoor();
       goDo(farm, agent, door.x, door.y, {
         type: "work",
@@ -147,9 +171,8 @@ function finishWork(
         x: door.x,
         y: door.y,
         t: 0,
-        dur: WORK_TIME.drop,
+        dur: workDur(agent, "drop"),
       });
-      unclaim(plot, agent.id);
       return;
     }
   } else if (act.kind === "drop") {
@@ -173,10 +196,6 @@ function buildPlot(farm: FarmState, x: number, y: number): void {
   if (farm.terrain[i] === TERRAIN.barn || farm.terrain[i] === TERRAIN.well) return;
   farm.terrain[i] = TERRAIN.dirt;
   if (!plotAt(farm, x, y)) farm.plots.push(emptyPlot(x, y));
-}
-
-function unclaim(plot: Plot, id: string): void {
-  if (plot.claimedBy === id) plot.claimedBy = null;
 }
 
 function goDo(
@@ -204,7 +223,7 @@ function claimJob(farm: FarmState, agent: FarmAgent): void {
       x: door.x,
       y: door.y,
       t: 0,
-      dur: WORK_TIME.drop,
+      dur: workDur(agent, "drop"),
     });
     agent.thought = "barn. wallet. same building.";
     return;
@@ -252,6 +271,7 @@ function findTarget(
     const marked = farm.plots
       .filter((p) => p.designation === "build" && !p.claimedBy)
       .sort((a, b) => dist2(agent, a) - dist2(agent, b));
+    // build designations may live on grass without a plot — scan terrain flags via plots OR a ghost
     if (marked[0]) return marked[0];
     return findBuildMarks(farm, agent);
   }
@@ -292,6 +312,7 @@ function findTarget(
 }
 
 function findBuildMarks(farm: FarmState, agent: FarmAgent): { x: number; y: number } | null {
+  // designations on grass are stored as plots with designation build and state empty
   let best: Plot | null = null;
   let bestD = 1e9;
   for (const p of farm.plots) {
@@ -320,7 +341,7 @@ function takeTarget(
       x: target.x,
       y: target.y,
       t: 0,
-      dur: WORK_TIME.build,
+      dur: workDur(agent, "build"),
     });
     agent.thought = `building a plot at ${target.x},${target.y}`;
     return true;
@@ -335,7 +356,7 @@ function takeTarget(
       x: plot.x,
       y: plot.y,
       t: 0,
-      dur: WORK_TIME[workKind],
+      dur: workDur(agent, workKind),
     });
     agent.thought = workKind === "till" ? "tilling. very official." : "planting oversized leaves.";
   } else if (kind === "tend") {
@@ -345,7 +366,7 @@ function takeTarget(
       x: plot.x,
       y: plot.y,
       t: 0,
-      dur: WORK_TIME.tend,
+      dur: workDur(agent, "tend"),
     });
     agent.thought = "working the plot. proof of teamwork.";
   } else if (kind === "harvest") {
@@ -355,7 +376,7 @@ function takeTarget(
       x: plot.x,
       y: plot.y,
       t: 0,
-      dur: WORK_TIME.harvest,
+      dur: workDur(agent, "harvest"),
     });
     agent.thought = "cutting kale before it sulks.";
   } else if (kind === "haul") {
@@ -365,7 +386,7 @@ function takeTarget(
       x: plot.x,
       y: plot.y,
       t: 0,
-      dur: WORK_TIME.pickup,
+      dur: workDur(agent, "pickup"),
     });
     agent.thought = "hauling. barn first. always barn first.";
   }
@@ -379,6 +400,22 @@ function tryOrder(farm: FarmState, agent: FarmAgent, order: ForcedOrder): boolea
   const plot = plotAt(farm, order.x, order.y);
   if (!plot || plot.claimedBy) return false;
   return takeTarget(farm, agent, order.kind, plot);
+}
+
+function findNearbyPile(farm: FarmState, agent: FarmAgent, radius: number): Plot | null {
+  let best: Plot | null = null;
+  let bestD = 1e9;
+  for (const p of farm.plots) {
+    if (p.claimedBy || p.groundKale <= 0) continue;
+    const dx = Math.abs(agent.x - (p.x + 0.5));
+    const dy = Math.abs(agent.y - (p.y + 0.5));
+    const d = Math.max(dx, dy);
+    if (d <= radius && d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return best;
 }
 
 function dist2(agent: FarmAgent, p: { x: number; y: number }): number {
@@ -411,88 +448,6 @@ function idleThought(agent: FarmAgent): string {
   return bits[agent.id.length % bits.length];
 }
 
-export function designate(farm: FarmState, x: number, y: number, kind: Designation | null): string {
-  if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return "out of bounds";
-  const t = farm.terrain[y * MAP_W + x];
-  if (t === TERRAIN.barn || t === TERRAIN.well) return "that's a building, not a job";
-  if (kind === "build") {
-    if (t === TERRAIN.dirt) return "already a plot";
-    let p = plotAt(farm, x, y);
-    if (!p) {
-      p = emptyPlot(x, y);
-      p.designation = "build";
-      farm.plots.push(p);
-    } else {
-      p.designation = "build";
-    }
-    return `build marked at ${x},${y}`;
-  }
-  let p = plotAt(farm, x, y);
-  if (!p) {
-    if (t !== TERRAIN.dirt) return "not a plot — use Build on grass";
-    p = emptyPlot(x, y);
-    farm.plots.push(p);
-  }
-  p.designation = kind;
-  return kind ? `${kind} marked at ${x},${y}` : `cleared ${x},${y}`;
-}
-
-export function hireAgent(farm: FarmState, job: JobKind): { ok: boolean; msg: string; agent?: FarmAgent } {
-  if (farm.agents.length >= MAX_AGENTS) return { ok: false, msg: "max 8 pails. this is not a town." };
-  const stats = JOB_STATS[job];
-  if (farm.kale < stats.hire) return { ok: false, msg: `need ${stats.hire} KALE to hire a ${stats.label}` };
-  farm.kale -= stats.hire;
-  farm.spendEvents.push({ t: farm.simTime, amt: stats.hire });
-  const door = barnDoor();
-  const agent = spawnAgent(farm.nextAgentId++, job, door.x + 0.3, door.y + 0.6, farm.nextName++);
-  farm.agents.push(agent);
-  return { ok: true, msg: `hired ${agent.name} the ${stats.label}`, agent };
-}
-
-export function fireAgent(farm: FarmState, id: string): { ok: boolean; msg: string } {
-  const i = farm.agents.findIndex((a) => a.id === id);
-  if (i < 0) return { ok: false, msg: "no such pail" };
-  const agent = farm.agents[i];
-  for (const p of farm.plots) if (p.claimedBy === id) p.claimedBy = null;
-  farm.agents.splice(i, 1);
-  return { ok: true, msg: `fired ${agent.name}. the pail is empty.` };
-}
-
-export function saveJob(farm: FarmState, id: string, markdown: string): { ok: boolean; msg: string; agent?: FarmAgent } {
-  const agent = farm.agents.find((a) => a.id === id);
-  if (!agent) return { ok: false, msg: "no such pail" };
-  agent.jobFile = markdown.slice(0, 4000);
-  agent.policy = jobPolicy(agent.job, agent.jobFile);
-  if (agent.action.type === "idle") agent.idleSince = 0;
-  agent.thought = "re-reading the file. new orders.";
-  return { ok: true, msg: "job file saved. replanning.", agent };
-}
-
-export function queueOrder(
-  farm: FarmState,
-  agentId: string,
-  order: ForcedOrder,
-): { ok: boolean; msg: string } {
-  const agent = farm.agents.find((a) => a.id === agentId);
-  if (!agent) return { ok: false, msg: "no such pail" };
-  if (agent.action.type === "work") {
-    const plot = plotAt(farm, agent.action.x, agent.action.y);
-    if (plot) unclaim(plot, agent.id);
-  } else if (agent.action.type === "walk" && "x" in agent.action.after && "y" in agent.action.after) {
-    const after = agent.action.after as { x?: number; y?: number };
-    if (typeof after.x === "number" && typeof after.y === "number") {
-      const plot = plotAt(farm, after.x, after.y);
-      if (plot) unclaim(plot, agent.id);
-    }
-  }
-  agent.forced = order;
-  agent.action = { type: "idle" };
-  agent.thought = `queued ${order.kind} at ${order.x},${order.y}`;
-  return { ok: true, msg: agent.thought };
-}
-
-export function setSpeed(farm: FarmState, speed: 1 | 3 | 10): void {
-  farm.speed = speed;
-}
+export { designate, fireAgent, hireAgent, promoteAgent, queueOrder, saveJob, setSpeed } from "./ops";
 
 export { DIRS, JOB_STATS };

@@ -1,6 +1,7 @@
 import {
   BARN,
   DEFAULT_JOB_FILES,
+  DEFAULT_ROOT_PROMPT,
   HOME,
   JOB_STATS,
   MAP_H,
@@ -56,7 +57,56 @@ export function createFarm(): FarmState {
     ripeCount: 0,
     wiltCount: 0,
     groundCount: 0,
+    rootPrompt: DEFAULT_ROOT_PROMPT,
+    desires: [],
+    nextDesireId: 1,
+    foreman: {
+      thought: "barn brain online. human, sit down.",
+      lastAct: "woke up",
+      cooldown: 0,
+      thinking: false,
+      holdUntil: 0,
+    },
   };
+}
+
+
+export function ensureFarmShape(farm: FarmState): FarmState {
+  if (typeof farm.rootPrompt !== "string" || !farm.rootPrompt) {
+    farm.rootPrompt = DEFAULT_ROOT_PROMPT;
+  }
+  if (!Array.isArray(farm.desires)) farm.desires = [];
+  for (const d of farm.desires) {
+    if (typeof d.id !== "number") d.id = 0;
+    if (typeof d.text !== "string") d.text = "";
+    if (typeof d.t !== "number") d.t = 0;
+    if (d.status !== "queued" && d.status !== "doing" && d.status !== "done") d.status = "queued";
+    if (typeof d.note !== "string") d.note = "";
+  }
+  if (typeof farm.nextDesireId !== "number" || !Number.isFinite(farm.nextDesireId)) {
+    farm.nextDesireId = farm.desires.reduce((m, d) => Math.max(m, d.id), 0) + 1;
+  }
+  const f = farm.foreman as FarmState["foreman"] | undefined;
+  if (!f || typeof f !== "object") {
+    farm.foreman = {
+      thought: "barn brain online. human, sit down.",
+      lastAct: "woke up",
+      cooldown: 0,
+      thinking: false,
+      holdUntil: 0,
+    };
+  } else {
+    if (typeof f.thought !== "string") f.thought = "barn brain online.";
+    if (typeof f.lastAct !== "string") f.lastAct = "";
+    if (typeof f.cooldown !== "number" || !Number.isFinite(f.cooldown)) f.cooldown = 0;
+    if (typeof f.thinking !== "boolean") f.thinking = false;
+    if (typeof f.holdUntil !== "number" || !Number.isFinite(f.holdUntil)) f.holdUntil = 0;
+  }
+  for (const a of farm.agents) {
+    if (typeof a.rank !== "number" || !Number.isFinite(a.rank) || a.rank < 1) a.rank = 1;
+    if (a.rank > 5) a.rank = 5;
+  }
+  return farm;
 }
 
 export function emptyPlot(x: number, y: number): Plot {
@@ -97,6 +147,7 @@ export function spawnAgent(
     carrying: 0,
     thinking: false,
     thought: "waiting for a job. the soil is judging me.",
+    rank: 1,
   };
 }
 

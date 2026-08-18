@@ -46,6 +46,7 @@ function growPlots(farm: FarmState, dt: number): void {
         p.growth = 1;
         p.state = "ripe";
         p.wilt = WILT_TIME;
+        dropTendClaim(farm, p);
       }
     } else if (p.state === "ripe") {
       p.wilt -= dt;
@@ -76,6 +77,7 @@ function stepAgent(farm: FarmState, agent: FarmAgent, dt: number): void {
   }
   agent.idleSince = 0;
   if (act.type === "walk") {
+    if (abortStaleWalk(farm, agent, act)) return;
     const node = act.path[act.i];
     if (!node) {
       agent.action = act.after;
@@ -235,12 +237,12 @@ function claimJob(farm: FarmState, agent: FarmAgent): void {
       return;
     }
   }
-  const wants = wantedKinds(agent);
+  const wants = wantedKinds(agent, farm);
   for (const kind of wants) {
     const target = findTarget(farm, agent, kind);
     if (target && takeTarget(farm, agent, kind, target)) return;
   }
-  if (agent.policy.waitAtBarn) {
+  if (agent.policy.waitAtBarn && !(agent.job === "harvester" && farm.ripeCount > 0)) {
     const door = barnDoor();
     const dist = Math.hypot(agent.x - (door.x + 0.5), agent.y - (door.y + 0.5));
     if (dist > 1.2) {
@@ -250,7 +252,7 @@ function claimJob(farm: FarmState, agent: FarmAgent): void {
   }
 }
 
-function wantedKinds(agent: FarmAgent): Designation[] {
+function wantedKinds(agent: FarmAgent, farm: FarmState): Designation[] {
   const p = agent.policy;
   const list: Designation[] = [];
   if (p.plant) list.push("plant");
@@ -259,6 +261,9 @@ function wantedKinds(agent: FarmAgent): Designation[] {
   if (p.haul) list.push("haul");
   if (p.build) list.push("build");
   if (agent.job === "planter" && !list.includes("plant")) list.unshift("plant");
+  if (farm.ripeCount > 0 && list.includes("harvest")) {
+    return ["harvest", ...list.filter((k) => k !== "harvest")];
+  }
   return list;
 }
 
@@ -294,7 +299,7 @@ function findTarget(
         scored.push(p);
       }
     } else if (kind === "harvest") {
-      if ((p.designation === "harvest" || p.designation == null) && p.state === "ripe") scored.push(p);
+      if (p.state === "ripe") scored.push(p);
     } else if (kind === "haul") {
       if ((p.designation === "haul" || p.designation == null) && p.groundKale > 0) scored.push(p);
     }
@@ -416,6 +421,48 @@ function findNearbyPile(farm: FarmState, agent: FarmAgent, radius: number): Plot
     }
   }
   return best;
+}
+
+
+function dropTendClaim(farm: FarmState, plot: Plot): void {
+  if (!plot.claimedBy) return;
+  const claimer = farm.agents.find((a) => a.id === plot.claimedBy);
+  if (!claimer || !isWorkOnPlot(claimer, plot, "tend")) return;
+  plot.claimedBy = null;
+  claimer.action = { type: "idle" };
+  claimer.thought = "plot ripened. handing off to harvest.";
+}
+
+function isWorkOnPlot(agent: FarmAgent, plot: Plot, kind: string): boolean {
+  const act = agent.action;
+  if (act.type === "work") return act.kind === kind && act.x === plot.x && act.y === plot.y;
+  if (act.type === "walk" && act.after.type === "work") {
+    return act.after.kind === kind && act.after.x === plot.x && act.after.y === plot.y;
+  }
+  return false;
+}
+
+function abortStaleWalk(
+  farm: FarmState,
+  agent: FarmAgent,
+  act: Extract<AgentAction, { type: "walk" }>,
+): boolean {
+  const after = act.after;
+  if (after.type === "work" && after.kind === "harvest") {
+    const plot = plotAt(farm, after.x, after.y);
+    if (!plot || plot.state !== "ripe") {
+      if (plot) unclaim(plot, agent.id);
+      agent.action = { type: "idle" };
+      agent.thought = "plot isn't ripe anymore. aborting.";
+      return true;
+    }
+  }
+  if (after.type === "idle" && agent.job === "harvester" && farm.ripeCount > 0) {
+    agent.action = { type: "idle" };
+    agent.thought = "ripe in the field. staying put.";
+    return true;
+  }
+  return false;
 }
 
 function dist2(agent: FarmAgent, p: { x: number; y: number }): number {

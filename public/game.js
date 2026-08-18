@@ -1060,8 +1060,7 @@ function drawBarn() {
   ctx.fillText("BARN", px + 8, py + h * 0.48);
   if (snap) {
     const stock = snap.barn.stock || 0;
-    const cap = 5000;
-    const fill = Math.max(0, Math.min(1, stock / cap));
+    const fill = Math.max(0, Math.min(1, stock / Math.max(stock, 20000)));
     const barX = px + 6, barY = py + h * 0.62, barW = w - 12, barH = 4;
     ctx.fillStyle = "#2a1a0c";
     ctx.fillRect(barX, barY, barW, barH);

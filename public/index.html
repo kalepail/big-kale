@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Big Kale — you do not farm</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Lilita+One&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="hud">
+        <div class="brand">
+          <span class="logo">BK</span>
+          <div>
+            <h1>Big Kale</h1>
+            <p class="tag">you do not farm. you write files.</p>
+          </div>
+        </div>
+        <div class="rates">
+          <div class="stat kale"><label>KALE</label><b id="hud-kale">40.0</b></div>
+          <div class="stat"><label>yield/min</label><b id="hud-yield">+0.0</b></div>
+          <div class="stat"><label>spend/min</label><b id="hud-spend">0.4</b></div>
+          <div class="stat" id="stat-net"><label>net/min</label><b id="hud-net">-0.4</b></div>
+          <div class="stat"><label>pails</label><b id="hud-agents">1</b></div>
+          <button id="btn-idle" class="idle-btn" title="Cycle to next idle pail">
+            idle <b id="hud-idle">1</b>
+          </button>
+        </div>
+        <div class="alerts" id="alerts"></div>
+      </header>
+
+      <div id="stage">
+        <canvas id="farm"></canvas>
+        <canvas id="minimap" width="144" height="144"></canvas>
+        <div id="toast"></div>
+      </div>
+
+      <aside id="panel">
+        <div class="tools">
+          <p class="section">Designate</p>
+          <div class="row wrap" id="tools">
+            <button data-tool="plant">Plant</button>
+            <button data-tool="tend">Tend</button>
+            <button data-tool="harvest">Harvest</button>
+            <button data-tool="haul">Haul</button>
+            <button data-tool="build">Build</button>
+            <button data-tool="clear">Clear</button>
+          </div>
+          <p class="hint">Jobs live on tiles. Pails claim them. You do not path units.</p>
+        </div>
+        <div class="tools">
+          <p class="section">Sim</p>
+          <div class="row" id="speeds">
+            <button data-speed="1" class="on">1×</button>
+            <button data-speed="3">3×</button>
+            <button data-speed="10">10×</button>
+          </div>
+        </div>
+        <div class="tools">
+          <p class="section">Hire a pail</p>
+          <div class="hire" id="hire"></div>
+          <p class="hint">Max 8. Burn is forever (until you fire them).</p>
+        </div>
+        <div id="inspect" class="inspect">
+          <p class="section">Inspect</p>
+          <p class="muted">Click a tile, a pail, or the barn.</p>
+        </div>
+        <div id="editor" class="editor hidden">
+          <p class="section">Job file <span id="editor-name"></span></p>
+          <textarea id="jobfile" spellcheck="false"></textarea>
+          <button id="btn-save">Save → replan</button>
+        </div>
+      </aside>
+    </div>
+    <script src="/game.js"></script>
+  </body>
+</html>

@@ -289,7 +289,7 @@ function parseDesire(farm: FarmState, text: string): { thought: string; lastAct:
       const cov = ensureCoverage(farm, "worker", "tend");
       return { thought: "someone water the divas.", lastAct: cov.lastAct };
     }
-    return { thought: "already tending. the plants are spoiled.", lastAct: "tend coverage already ok" };
+    return { thought: "already staffing tend — watching growth", lastAct: "already staffing tend — watching growth" };
   }
 
   for (const a of farm.agents) patchAgent(a, `# ${text}`);
@@ -305,7 +305,15 @@ function ensureCoverage(
   key: Exclude<keyof Policy, "waitAtBarn">,
 ): { thought: string; lastAct: string } {
   if (anyone(farm, key)) {
-    return { thought: `${key} is covered. try not to mess it up.`, lastAct: `${key} already covered` };
+    const watching: Record<string, string> = {
+      harvest: "already staffing harvest — watching wilt",
+      haul: "already staffing haul — watching piles",
+      plant: "already staffing plant — watching empty dirt",
+      tend: "already staffing tend — watching growth",
+      build: "already staffing build — watching grass",
+    };
+    const note = watching[key] || `already staffing ${key}`;
+    return { thought: note, lastAct: note };
   }
   const hired = tryHire(farm, job);
   if (hired) return hired;
@@ -560,6 +568,8 @@ function statusThought(farm: FarmState, net: number): string {
 }
 
 function say(farm: FarmState, thought: string, lastAct: string): void {
-  farm.foreman.thought = thought.slice(0, 120);
+  if (!farm.foreman.holdUntil || Date.now() >= farm.foreman.holdUntil) {
+    farm.foreman.thought = thought.slice(0, 120);
+  }
   farm.foreman.lastAct = lastAct.slice(0, 120);
 }

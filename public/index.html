@@ -28,13 +28,17 @@
           <button type="button" data-job="builder" title="Builders">B <b id="chip-b">0</b></button>
         </div>
         <div id="hud-crisis" class="crisis hidden">ok</div>
+        <div class="unused-slot">unused <b id="hud-unused">0</b></div>
+        <div id="hud-alerts" class="alerts"></div>
         <button id="btn-idle" class="idle-btn" title="Cycle idle pail (I)">IDLE <b id="hud-idle">0</b></button>
       </header>
+
       <div id="stage">
         <canvas id="farm"></canvas>
         <canvas id="minimap" width="144" height="144"></canvas>
         <div id="toast"></div>
         <span id="brand-leaf" aria-hidden="true">BK</span>
+
         <div id="cmd">
           <div class="row wrap" id="tools">
             <button data-tool="plant">Plant</button>
@@ -45,12 +49,14 @@
             <button data-tool="clear">Clear</button>
             <button type="button" id="paint-toggle">Paint</button>
           </div>
+          <p class="hint">click inspects. turn Paint on to mark tiles.</p>
           <div class="row" id="speeds">
             <button data-speed="1" class="on">1×</button>
             <button data-speed="3">3×</button>
             <button data-speed="10">10×</button>
           </div>
         </div>
+
         <div id="card" class="hidden">
           <div id="inspect" class="inspect">
             <p class="muted">Click a pail, a plot, or the barn.</p>
@@ -63,7 +69,7 @@
           <div id="barn-tools" class="hidden">
             <p class="section">Hire</p>
             <div class="hire" id="hire"></div>
-            <p class="section">farm.md</p>
+            <p class="section">farm.md (Foreman reads this)</p>
             <textarea id="farmfile" spellcheck="false"></textarea>
             <button id="btn-save-farm">Save farm.md</button>
             <p id="foreman-thought" class="foreman-thought">barn brain booting…</p>
